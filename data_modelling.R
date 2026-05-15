@@ -2,6 +2,11 @@ library(e1071)
 library(psych)
 library(MASS)
 library(dplyr)
+library(lmtest)
+library(car)
+library(sandwich)
+library(caret)
+library(Metrics)
 
 students <- read.csv('students_cleaned.csv')
 View(students)
@@ -183,7 +188,7 @@ scatter.smooth(x = absences,
 detach(student_subset)
 
 
-# Examining correlation between murder and Independent variables
+# Examining correlation between final grade and Independent variables
 
 cor_data <- student_subset %>%
   mutate(
@@ -304,10 +309,8 @@ boxplot(student_subset$final_grades_capped,
 
 
 # Skewness function to examine normality
-# install.packages("e1071")
-
 windows(30,20)
-par(mfrow = c(3,2)) # divide graph area into 1 row x 2 cols
+par(mfrow = c(3,2)) # divide graph area into 3 rows x 2 cols
 
 # skewness of < -1 or > 1 = highly skewed
 # -1 to -0.5 and 0.5 to 1 = moderately skewed
@@ -365,8 +368,6 @@ hist(student_subset$final_grades_capped,
      breaks = 20,
      main = "Final Grade Distribution",
      xlab = "Final Grade")
-
-
 
 
 model <- lm(final_grades_capped ~ 1,
@@ -511,7 +512,6 @@ comparison
 # NORMALITY OF RESIDUALS
 
 windows(15,6)
-
 par(mfrow = c(1,2))
 
 # Histogram
@@ -533,17 +533,10 @@ shapiro.test(residuals(model_2))
 
 
 # HOMOSCEDASTICITY
-
-install.packages("lmtest")
-library(lmtest)
-
 bptest(model_2)
 
 
 # MULTICOLLINEARITY
-
-library(car)
-
 vif(model_2)
 
 
@@ -551,11 +544,6 @@ vif(model_2)
 # INDEPENDENCE OF ERRORS
 
 durbinWatsonTest(model_2)
-
-
-install.packages('sandwich')
-library(sandwich)
-library(lmtest)
 
 coeftest(
   model_2,
@@ -566,7 +554,6 @@ coeftest(
 
 # TRAIN TEST SPLIT
 
-library(caret)
 
 set.seed(123)
 
@@ -612,9 +599,6 @@ head(results)
 
 
 # MODEL ACCURACY
-
-install.packages("Metrics")
-library(Metrics)
 
 # RMSE
 rmse(
@@ -675,3 +659,49 @@ forecast_results <- cbind(
 )
 
 forecast_results
+
+
+
+# RESEARCH QUESTION TESTING
+
+
+# RQ1
+# Is there a significant relationship between
+# study time and final grade?
+
+summary(lm(final_grade_normalized ~ studytime_num,
+           data = train_data))
+
+
+# RQ2
+# Is there a significant difference between
+# male and female students?
+
+summary(lm(final_grade_normalized ~ sex_num,
+           data = train_data))
+
+
+
+# RQ3
+# Does parental education influence final grades?
+
+
+summary(lm(final_grade_normalized ~ parent_edu,
+           data = train_data))
+
+
+# RQ4
+# Alcohol consumption and final grades
+
+
+summary(lm(final_grade_normalized ~ alcohol_consume,
+           data = train_data))
+
+
+# RQ5
+# Absences and final grades
+
+
+summary(lm(final_grade_normalized ~ absences_capped,
+           data = train_data))
+
