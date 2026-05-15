@@ -1,3 +1,6 @@
+library(e1071)
+library(psych)
+library(MASS)
 library(dplyr)
 
 students <- read.csv('students_cleaned.csv')
@@ -119,7 +122,7 @@ students <- students %>%
 str(students)
 
 student_subset <- students %>%
-  select(
+  dplyr::select(
     studytime,
     final_grade,
     sex,
@@ -130,7 +133,7 @@ student_subset <- students %>%
 
 View(student_subset)
 
-library(psych)
+
 windows(20,10)
 
 pairs.panels(student_subset,
@@ -240,6 +243,7 @@ Q3 <- quantile(student_subset$absences, 0.75)
 
 IQR_value <- Q3 - Q1
 
+
 lower <- Q1 - 1.5 * IQR_value
 upper <- Q3 + 1.5 * IQR_value
 
@@ -301,7 +305,7 @@ boxplot(student_subset$final_grades_capped,
 
 # Skewness function to examine normality
 # install.packages("e1071")
-library(e1071)
+
 windows(30,20)
 par(mfrow = c(3,2)) # divide graph area into 1 row x 2 cols
 
@@ -348,5 +352,326 @@ polygon(density(student_subset$absences_capped), col = "red")
 
 
 
+# Check normality of all variables using normality test
+shapiro.test(student_subset$final_grades_capped)
+shapiro.test(student_subset$studytime_num)
+shapiro.test(student_subset$parent_edu)
+shapiro.test(student_subset$alcohol_consume)
+shapiro.test(student_subset$absences_capped)
+shapiro.test(student_subset$sex_num)
 
 
+hist(student_subset$final_grades_capped,
+     breaks = 20,
+     main = "Final Grade Distribution",
+     xlab = "Final Grade")
+
+
+
+
+model <- lm(final_grades_capped ~ 1,
+            data = student_subset)
+
+boxcox(model)
+
+boxcox_result <-boxcox(model)
+
+
+lambda <- boxcox_result$x[
+  which.max(boxcox_result$y)
+]
+
+lambda
+
+student_subset$final_grade_normalized <-
+  (student_subset$final_grades_capped^lambda - 1) / lambda
+
+shapiro.test(student_subset$final_grade_normalized)
+
+hist(student_subset$final_grade_normalized,
+     breaks = 20,
+     main = "Final Grade Distribution",
+     xlab = "Final Grade")
+
+
+model_data <- student_subset %>%
+  dplyr::select(
+    final_grade_normalized,
+    studytime_num,
+    sex_num,
+    parent_edu,
+    alcohol_consume,
+    absences_capped
+  )
+
+str(model_data)
+summary(model_data)
+
+
+
+# Model 1
+
+model_1 <- lm(
+  final_grade_normalized ~
+    studytime_num +
+    sex_num +
+    parent_edu +
+    alcohol_consume +
+    absences_capped,
+  data = model_data
+)
+
+summary(model_1)
+
+
+# Remove sex from the variable list and develop model 2
+# Since sex isn't significant in the list
+
+model_2 <- lm(
+  final_grade_normalized ~
+    studytime_num +
+    parent_edu +
+    alcohol_consume +
+    absences_capped,
+  
+  data = model_data
+)
+
+summary(model_2)
+
+
+# model 3 
+
+standardized_data <- model_data %>%
+  mutate(across(everything(), scale))
+
+standardized_model <- lm(
+  final_grade_normalized ~
+    
+    studytime_num +
+    parent_edu +
+    alcohol_consume +
+    absences_capped,
+  
+  data = standardized_data
+)
+
+summary(standardized_model)
+
+
+# Check AIC and BIC 
+
+AIC(
+  model_1,
+  model_2,
+  standardized_model
+)
+
+BIC(
+  model_1,
+  model_2,
+  standardized_model
+)
+
+
+# Compare the results in the table
+comparison <- data.frame(
+  
+  Model = c(
+    "Model 1 - Full Model",
+    "Model 2- Reduced Model",
+    "Standardized Model"
+  ),
+  
+  AIC = c(
+    AIC(model_1),
+    AIC(model_2),
+    AIC(standardized_model)
+  ),
+  
+  BIC = c(
+    BIC(model_1),
+    BIC(model_2),
+    BIC(standardized_model)
+  ),
+  
+  Adjusted_R2 = c(
+    summary(model_1)$adj.r.squared,
+    summary(model_2)$adj.r.squared,
+    summary(standardized_model)$adj.r.squared
+  )
+)
+
+comparison
+
+# FINAL MODEL DIAGNOSTICS and VALIDATION
+
+
+
+# NORMALITY OF RESIDUALS
+
+windows(15,6)
+
+par(mfrow = c(1,2))
+
+# Histogram
+hist(
+  residuals(model_2),
+  main = "Histogram of Residuals",
+  col = "skyblue",
+  xlab = "Residuals"
+)
+
+# QQ Plot
+qqnorm(residuals(model_2))
+qqline(residuals(model_2),
+       col = "red")
+
+# Shapiro-Wilk test
+shapiro.test(residuals(model_2))
+
+
+
+# HOMOSCEDASTICITY
+
+install.packages("lmtest")
+library(lmtest)
+
+bptest(model_2)
+
+
+# MULTICOLLINEARITY
+
+library(car)
+
+vif(model_2)
+
+
+
+# INDEPENDENCE OF ERRORS
+
+durbinWatsonTest(model_2)
+
+
+install.packages('sandwich')
+library(sandwich)
+library(lmtest)
+
+coeftest(
+  model_2,
+  vcov = vcovHC(model_2, type = "HC1")
+)
+
+
+
+# TRAIN TEST SPLIT
+
+library(caret)
+
+set.seed(123)
+
+train_index <- createDataPartition(
+  model_data$final_grade_normalized,
+  p = 0.8,
+  list = FALSE
+)
+
+train_data <- model_data[train_index, ]
+test_data <- model_data[-train_index, ]
+
+
+# TRAIN MODEL
+
+train_model <- lm(
+  final_grade_normalized ~
+    
+    studytime_num +
+    parent_edu +
+    alcohol_consume +
+    absences_capped,
+  
+  data = train_data
+)
+
+summary(train_model)
+
+
+# TEST PREDICTIONS
+
+predictions <- predict(
+  train_model,
+  newdata = test_data
+)
+
+results <- data.frame(
+  Actual = test_data$final_grade_normalized,
+  Predicted = predictions
+)
+
+head(results)
+
+
+# MODEL ACCURACY
+
+install.packages("Metrics")
+library(Metrics)
+
+# RMSE
+rmse(
+  test_data$final_grade_normalized,
+  predictions
+)
+
+# MAE
+mae(
+  test_data$final_grade_normalized,
+  predictions
+)
+
+# R-squared
+cor(
+  test_data$final_grade_normalized,
+  predictions
+)^2
+
+
+# ACTUAL VS PREDICTED
+
+windows(10,10)
+
+plot(
+  test_data$final_grade_normalized,
+  predictions,
+  
+  xlab = "Actual Grades",
+  ylab = "Predicted Grades",
+  
+  main = "Actual vs Predicted Grades",
+  
+  pch = 19,
+  col = "blue"
+)
+
+abline(0,1,col="red")
+
+
+# FORECASTING SCENARIOS
+
+new_students <- data.frame(
+  studytime_num = c(4,1,3,2),
+  parent_edu = c(5,1,4,2),
+  alcohol_consume = c(1,5,2,4),
+  absences_capped = c(1,20,5,15)
+)
+
+forecast_predictions <- predict(
+  train_model,
+  newdata = new_students
+)
+
+forecast_results <- cbind(
+  new_students,
+  predicted_grade = forecast_predictions
+)
+
+forecast_results
